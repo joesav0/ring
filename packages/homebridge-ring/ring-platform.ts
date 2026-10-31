@@ -213,8 +213,30 @@ export class RingPlatform implements DynamicPlatformPlugin {
         controlCenterDisplayName,
         ...config,
         systemId,
-      }),
-      locations = await ringApi.getLocations(),
+      })
+
+    ringApi.onRefreshTokenUpdated.subscribe(
+      ({ oldRefreshToken, newRefreshToken }) => {
+        if (!oldRefreshToken) return
+        try {
+          const saved = updateHomebridgeConfig(this.api, (contents) =>
+            contents.replace(oldRefreshToken, newRefreshToken),
+          )
+          if (!saved) {
+            this.log.error(
+              'Could not save the updated Ring refresh token: the previous token was not found in the Homebridge configuration.',
+            )
+          }
+        } catch (error) {
+          this.log.error(
+            'Could not save the updated Ring refresh token to the Homebridge configuration.',
+          )
+          this.log.error(String(error))
+        }
+      },
+    )
+
+    const locations = await ringApi.getLocations(),
       cachedAccessoryIds = Object.keys(this.homebridgeAccessories),
       platformAccessories: PlatformAccessory[] = [],
       externalAccessories: PlatformAccessory[] = [],
@@ -387,17 +409,5 @@ export class RingPlatform implements DynamicPlatformPlugin {
         staleAccessories,
       )
     }
-
-    ringApi.onRefreshTokenUpdated.subscribe(
-      ({ oldRefreshToken, newRefreshToken }) => {
-        if (!oldRefreshToken) {
-          return
-        }
-
-        updateHomebridgeConfig(this.api, (configContents) => {
-          return configContents.replace(oldRefreshToken, newRefreshToken)
-        })
-      },
-    )
   }
 }

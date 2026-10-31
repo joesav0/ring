@@ -266,7 +266,8 @@ export class RingRestClient {
           this.timeouts.push(timeout)
         })
         .catch(() => {
-          // ignore these errors here, they should be handled by the function making a rest request
+          // A transient failure must not leave a rejected promise cached forever.
+          if (this._authPromise === authPromise) this.clearPreviousAuth()
         })
     }
 
@@ -361,11 +362,25 @@ export class RingRestClient {
       }
     } catch (requestError: any) {
       if (grantData.refresh_token) {
-        // failed request with refresh token
-        this.refreshToken = undefined
-        this.authConfig = undefined
-        logError(requestError)
-        return this.getAuth()
+        const response = requestError.response,
+          body = response?.body
+        if (
+          response?.status === 401 &&
+          body &&
+          typeof body === 'object' &&
+          (body.error === 'invalid_grant' || body.error === 'access_denied')
+        ) {
+          throw new Error(
+            'Refresh token is not valid.  Unable to authenticate with Ring servers.  See https://github.com/dgreif/ring/wiki/Refresh-Tokens',
+            { cause: requestError },
+          )
+        }
+        throw new Error(
+          `Ring token refresh failed${
+            response?.status ? ` (HTTP ${response.status})` : ''
+          }; the saved token was retained.`,
+          { cause: requestError },
+        )
       }
 
       const response = requestError.response || {},

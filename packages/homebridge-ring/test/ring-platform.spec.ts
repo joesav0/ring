@@ -243,4 +243,20 @@ describe('RingPlatform', () => {
       '{"refreshToken":"new-token"}',
     )
   })
+
+  it('persists a token even if location discovery fails', async () => {
+    getLocations.mockImplementation(function (this: RingApi) {
+      ;(this as any).restClient.onRefreshTokenUpdated.next({
+        oldRefreshToken: 'old-token',
+        newRefreshToken: 'new-token',
+      })
+      return Promise.reject(new Error('location discovery failed'))
+    })
+    await expect(createPlatform().connectToApi()).rejects.toThrow(
+      'location discovery failed',
+    )
+    expect(readFileSync(configPath, 'utf8')).toBe(
+      '{"refreshToken":"new-token"}',
+    )
+  })
 })

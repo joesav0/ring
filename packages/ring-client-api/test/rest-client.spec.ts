@@ -14,6 +14,11 @@ import {
   vi,
 } from 'vitest'
 
+// A fixed machine identity keeps these tests independent of host permissions.
+vi.mock('systeminformation', () => ({
+  uuid: () => Promise.resolve({ os: 'test-system' }),
+}))
+
 // rest-client uses undici's fetch (paired with undici Agent). MSW only
 // intercepts global fetch, so route undici.fetch through globalThis.fetch
 // in tests. Drop `dispatcher` — Node's global fetch rejects an undici@8 Agent.
@@ -232,6 +237,23 @@ afterEach(() => {
 })
 
 describe('getAuth', () => {
+  it('retains the refresh token after a temporary server error', async () => {
+    client = new RingRestClient({
+      refreshToken: await wrapRefreshToken(refreshToken),
+    })
+    server.use(
+      http.post('https://oauth.ring.com/oauth/token', () =>
+        HttpResponse.json({ error: 'unavailable' }, { status: 503 }),
+      ),
+    )
+    const originalToken = client.refreshToken
+    await expect(client.getAuth()).rejects.toThrow('HTTP 503')
+    expect(client.refreshToken).toBe(originalToken)
+    server.resetHandlers()
+    await expect(client.getAuth()).resolves.toMatchObject({
+      access_token: accessToken,
+    })
+  })
   it('should throw and set the 2fa prompt', async () => {
     client = new RingRestClient({
       password,
